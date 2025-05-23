@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>충청남도 시군구 현안 이슈지도</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: white;
+    }
+    
+    header {
+      padding: 16px;
+      background: #1a4e8e;
+      color: white;
+      font-size: 1.3rem;
+      text-align: center;
+      font-weight: 700;
+    }
+    
+    #controls {
+      padding: 15px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    #region-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    
+    #region-buttons button {
+      padding: 8px 16px;
+      font-size: 13px;
+      border: 1px solid #ccc;
+      background-color: white;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    
+    #region-buttons button:hover {
+      background-color: #1a4e8e;
+      color: white;
+    }
+    
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      font-size: 12px;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .legend-color {
+      width: 20px;
+      height: 15px;
+      border: 1px solid #333;
+    }
+    
+    #map {
+      width: 100%;
+      height: calc(100vh - 180px);
+    }
+    
+    .popup-content {
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 350px;
+    }
+    
+    .popup-content h3 {
+      margin: 0 0 10px 0;
+      color: #1a4e8e;
+      font-size: 16px;
+    }
+    
+    .popup-content ul {
+      padding-left: 0;
+      margin: 10px 0;
+      list-style: none;
+    }
+    
+    .popup-content li {
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border-left: 3px solid #1a4e8e;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .popup-content li:hover {
+      background: #e3f2fd;
+      transform: translateX(2px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .popup-content li::after {
+      content: '🔗';
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 12px;
+      opacity: 0.6;
+    }
+    
+    .popup-content .importance {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: white;
+      margin-bottom: 12px;
+    }
+    
+    .importance.높음 { background-color: #e53e3e; }
+    .importance.중간 { background-color: #f6ad55; color: #333; }
+    .importance.낮음 { background-color: #68d391; color: #333; }
+    
+    .issue-help {
+      font-size: 11px;
+      color: #666;
+      margin-top: 8px;
+      font-style: italic;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    충청남도 시군구 현안 이슈 지도
+  </header>
+  
+  <div id="controls">
+    <div id="region-buttons"></div>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #e53e3e;"></div>
+        <span>높음</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #f6ad55;"></div>
+        <span>중간</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #68d391;"></div>
+        <span>낮음</span>
+      </div>
+    </div>
+  </div>
+  
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script>
+    let issueData = {};
+    let csvRawData = [];
+
+    // 지도 초기화
+    const map = L.map('map', {
+      zoomControl: true,
+      attributionControl: true
+    }).setView([36.5, 126.8], 9);
+
+    // 배경 타일 추가
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const regionLayers = {};
+    let allRegions = [];
+
+    // CSV 파일 읽기 및 데이터 처리
+    async function loadCSVData() {
+      try {
+        const csvContent = await window.fs.readFile('chungnam_issues_with_naver_links.csv', { encoding: 'utf8' });
+        
+        Papa.parse(csvContent, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            console.log('CSV 데이터 로드 완료:', results.data);
+            csvRawData = results.data;
+            
+            results.data.forEach(row => {
+              if (row.시군명) {
+                const cleanedRow = {};
+                Object.keys(row).forEach(key => {
+                  cleanedRow[key.trim()] = row[key] ? row[key].toString().trim() : '';
+                });
+                
+                issueData[cleanedRow.시군명] = {
+                  중요도: cleanedRow.중요도 || '중간',
+                  주요이슈: cleanedRow.주요이슈 ? cleanedRow.주요이슈.split('|') : [],
+                  출처: cleanedRow.출처 || null,
+                  이슈1: cleanedRow.이슈1 || '',
+                  이슈1_링크: cleanedRow['이슈1_링크'] || '',
+                  이슈2: cleanedRow.이슈2 || '',
+                  이슈2_링크: cleanedRow['이슈2_링크'] || '',
+                  이슈3: cleanedRow.이슈3 || '',
+                  이슈3_링크: cleanedRow['이슈3_링크'] || ''
+                };
+              }
+            });
+            
+            console.log('처리된 이슈 데이터:', issueData);
+            drawRegions();
+          },
+          error: function(error) {
+            console.error('CSV 파싱 오류:', error);
+            loadFallbackData();
+          }
+        });
+      } catch (error) {
+        console.error('CSV 파일 읽기 오류:', error);
+        loadFallbackData();
+      }
+    }
+
+    // 대체 데이터 (CSV 읽기 실패시)
+    function loadFallbackData() {
+      issueData = {
+        '천안시': {
+          중요도: '높음',
+          주요이슈: ['미래모빌리티 국가산단 조성', '국가 AI 컴퓨팅센터 유치', '국립치의학연구원·이민청 설립'],
+          출처: null,
+          이슈1: '미래모빌리티 국가산단 조성',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=천안시 미래모빌리티 국가산단 조성',
+          이슈2: '국가 AI 컴퓨팅센터 유치',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=천안시 국가 AI 컴퓨팅센터 유치',
+          이슈3: '국립치의학연구원·이민청 설립',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=천안시 국립치의학연구원·이민청 설립'
+        },
+        '공주시': {
+          중요도: '중간',
+          주요이슈: ['농촌 활력 및 정주 인프라 강화', '백제문화 관광 활성화', '교육·산단 유치 모색'],
+          출처: null,
+          이슈1: '농촌 활력 및 정주 인프라 강화',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=공주시 농촌 활력 및 정주 인프라 강화',
+          이슈2: '백제문화 관광 활성화',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=공주시 백제문화 관광 활성화',
+          이슈3: '교육·산단 유치 모색',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=공주시 교육·산단 유치 모색'
+        },
+        '보령시': {
+          중요도: '높음',
+          주요이슈: ['원산도~효자도 연도교 건설', '해양레포츠센터 및 관광 인프라', '신산업 R&D센터 유치'],
+          출처: null,
+          이슈1: '원산도~효자도 연도교 건설',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=보령시 원산도~효자도 연도교 건설',
+          이슈2: '해양레포츠센터 및 관광 인프라',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=보령시 해양레포츠센터 및 관광 인프라',
+          이슈3: '신산업 R&D센터 유치',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=보령시 신산업 R&D센터 유치'
+        },
+        '서산시': {
+          중요도: '높음',
+          주요이슈: ['서산공항 건설', '가로림만 국가해양정원 조성', '문화관광 콘텐츠 육성'],
+          출처: null,
+          이슈1: '서산공항 건설',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=서산시 서산공항 건설',
+          이슈2: '가로림만 국가해양정원 조성',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=서산시 가로림만 국가해양정원 조성',
+          이슈3: '문화관광 콘텐츠 육성',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=서산시 문화관광 콘텐츠 육성'
+        },
+        '논산시': {
+          중요도: '중간',
+          주요이슈: ['반다비체육센터 건립', '재해방지 기반시설 보강', '읍면 재생사업'],
+          출처: null,
+          이슈1: '반다비체육센터 건립',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=논산시 반다비체육센터 건립',
+          이슈2: '재해방지 기반시설 보강',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=논산시 재해방지 기반시설 보강',
+          이슈3: '읍면 재생사업',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=논산시 읍면 재생사업'
+        },
+        '아산시': {
+          중요도: '높음',
+          주요이슈: ['디스플레이 클러스터 조성', '탕정신도시 주거단지 개발', '산업단지 및 기업유치'],
+          출처: null,
+          이슈1: '디스플레이 클러스터 조성',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=아산시 디스플레이 클러스터 조성',
+          이슈2: '탕정신도시 주거단지 개발',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=아산시 탕정신도시 주거단지 개발',
+          이슈3: '산업단지 및 기업유치',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=아산시 산업단지 및 기업유치'
+        },
+        '당진시': {
+          중요도: '높음',
+          주요이슈: ['국도32호 대체우회도로 개설', '수산식품클러스터 조성', '기업혁신파크 및 해양관광단지 구축'],
+          출처: null,
+          이슈1: '국도32호 대체우회도로 개설',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=당진시 국도32호 대체우회도로 개설',
+          이슈2: '수산식품클러스터 조성',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=당진시 수산식품클러스터 조성',
+          이슈3: '기업혁신파크 및 해양관광단지 구축',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=당진시 기업혁신파크 및 해양관광단지 구축'
+        },
+        '금산군': {
+          중요도: '중간',
+          주요이슈: ['인구유입 및 귀농 지원', '고품질 농업·농촌체험', '도로·정주 인프라 정비'],
+          출처: null,
+          이슈1: '인구유입 및 귀농 지원',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=금산군 인구유입 및 귀농 지원',
+          이슈2: '고품질 농업·농촌체험',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=금산군 고품질 농업·농촌체험',
+          이슈3: '도로·정주 인프라 정비',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=금산군 도로·정주 인프라 정비'
+        },
+        '서천군': {
+          중요도: '높음',
+          주요이슈: ['장항항 수산컴플렉스 조성', '홍원항 복합개발', '해양생태계 보전'],
+          출처: null,
+          이슈1: '장항항 수산컴플렉스 조성',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=서천군 장항항 수산컴플렉스 조성',
+          이슈2: '홍원항 복합개발',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=서천군 홍원항 복합개발',
+          이슈3: '해양생태계 보전',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=서천군 해양생태계 보전'
+        },
+        '부여군': {
+          중요도: '중간',
+          주요이슈: ['금강 누정·선유길 조성', '사비마을 이주단지 분양', '부여도서관 신축'],
+          출처: null,
+          이슈1: '금강 누정·선유길 조성',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=부여군 금강 누정·선유길 조성',
+          이슈2: '사비마을 이주단지 분양',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=부여군 사비마을 이주단지 분양',
+          이슈3: '부여도서관 신축',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=부여군 부여도서관 신축'
+        },
+        '청양군': {
+          중요도: '중간',
+          주요이슈: ['스마트 APC 구축', '청년 스마트팜 클러스터', '노인돌봄 서비스 강화'],
+          출처: null,
+          이슈1: '스마트 APC 구축',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=청양군 스마트 APC 구축',
+          이슈2: '청년 스마트팜 클러스터',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=청양군 청년 스마트팜 클러스터',
+          이슈3: '노인돌봄 서비스 강화',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=청양군 노인돌봄 서비스 강화'
+        },
+        '홍성군': {
+          중요도: '낮음',
+          주요이슈: ['군청사 사업장 실태 점검', '도로·농촌·관광 인프라', '주민의견 수렴 및 책임제 도입'],
+          출처: null,
+          이슈1: '군청사 사업장 실태 점검',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=홍성군 군청사 사업장 실태 점검',
+          이슈2: '도로·농촌·관광 인프라',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=홍성군 도로·농촌·관광 인프라',
+          이슈3: '주민의견 수렴 및 책임제 도입',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=홍성군 주민의견 수렴 및 책임제 도입'
+        },
+        '예산군': {
+          중요도: '높음',
+          주요이슈: ['서해선 복선전철 연장', '예당호 관광인프라', '읍·면 중심지 활성화'],
+          출처: null,
+          이슈1: '서해선 복선전철 연장',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=예산군 서해선 복선전철 연장',
+          이슈2: '예당호 관광인프라',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=예산군 예당호 관광인프라',
+          이슈3: '읍·면 중심지 활성화',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=예산군 읍·면 중심지 활성화'
+        },
+        '태안군': {
+          중요도: '높음',
+          주요이슈: ['가로림만 해상교량 건설', '가로림만 갯벌 세계유산 등재', '해안선·모래톱 보전 및 관광개발'],
+          출처: null,
+          이슈1: '가로림만 해상교량 건설',
+          이슈1_링크: 'https://search.naver.com/search.naver?where=news&query=태안군 가로림만 해상교량 건설',
+          이슈2: '가로림만 갯벌 세계유산 등재',
+          이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=태안군 가로림만 갯벌 세계유산 등재',
+          이슈3: '해안선·모래톱 보전 및 관광개발',
+          이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=태안군 해안선·모래톱 보전 및 관광개발'
+        }
+      };
+      
+      console.log('대체 데이터 사용:', issueData);
+      drawRegions();
+    }
+
+    // 중요도별 색상 반환
+    function getColorByImportance(importance) {
+      switch(importance) {
+        case '높음': return '#e53e3e';
+        case '중간': return '#f6ad55';
+        case '낮음': return '#68d391';
+        default: return '#gray';
+      }
+    }
+
+    // 이슈 클릭 핸들러
+    function handleIssueClick(link, issueName) {
+      if (link && link.trim()) {
+        window.open(link, '_blank');
+      } else {
+        alert('해당 이슈의 링크 정보가 없습니다.');
+      }
+    }
+
+    // 팝업 내용 생성 (링크 포함)
+    function createPopupContent(name, data) {
+      let issuesHtml = '';
+      
+      // 각 이슈별로 링크와 함께 표시
+      if (data.이슈1) {
+        issuesHtml += `<li onclick="handleIssueClick('${data.이슈1_링크}', '${data.이슈1}')" title="클릭하여 관련 뉴스 보기">${data.이슈1}</li>`;
+      }
+      if (data.이슈2) {
+        issuesHtml += `<li onclick="handleIssueClick('${data.이슈2_링크}', '${data.이슈2}')" title="클릭하여 관련 뉴스 보기">${data.이슈2}</li>`;
+      }
+      if (data.이슈3) {
+        issuesHtml += `<li onclick="handleIssueClick('${data.이슈3_링크}', '${data.이슈3}')" title="클릭하여 관련 뉴스 보기">${data.이슈3}</li>`;
+      }
+      
+      // 링크가 없는 경우 기본 이슈 목록 사용
+      if (!issuesHtml && data.주요이슈 && data.주요이슈.length > 0) {
+        issuesHtml = data.주요이슈.map(issue => `<li>${issue}</li>`).join('');
+      }
+      
+      const sourceLink = data.출처 ? `<small><a href='${data.출처}' target='_blank'>[출처 보기]</a></small>` : '';
+      
+      return `
+        <div class='popup-content'>
+          <h3>${name}</h3>
+          <div class='importance ${data.중요도}'>${data.중요도}</div>
+          <strong>주요 현안:</strong>
+          <ul>${issuesHtml}</ul>
+          ${issuesHtml ? '<div class="issue-help">💡 각 이슈를 클릭하면 관련 뉴스를 볼 수 있습니다</div>' : ''}
+          ${sourceLink}
+        </div>
+      `;
+    }
+
+    // 지역 버튼 생성
+    function renderRegionButtons(regions) {
+      const container = document.getElementById("region-buttons");
+      container.innerHTML = '';
+      
+      regions.sort().forEach(name => {
+        const button = document.createElement("button");
+        button.innerText = name;
+        button.onclick = () => {
+          const layer = regionLayers[name];
+          if (layer) {
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            setTimeout(() => {
+              layer.openPopup();
+            }, 500);
+          }
+        };
+        container.appendChild(button);
+      });
+    }
+
+    // 충남 지역 경계 데이터 (간단한 좌표로 대체)
+    const chungnamBounds = {
+      '천안시': [[36.8151, 127.1139], [36.8451, 127.1539]],
+      '공주시': [[36.4465, 127.1189], [36.4765, 127.1589]],
+      '보령시': [[36.3328, 126.6127], [36.3628, 126.6527]],
+      '아산시': [[36.7898, 127.0021], [36.8198, 127.0421]],
+      '서산시': [[36.7848, 126.4503], [36.8148, 126.4903]],
+      '논산시': [[36.1872, 127.0986], [36.2172, 127.1386]],
+      '계룡시': [[36.2743, 127.2489], [36.3043, 127.2889]],
+      '당진시': [[36.8927, 126.6279], [36.9227, 126.6679]],
+      '금산군': [[36.1089, 127.4888], [36.1389, 127.5288]],
+      '부여군': [[36.2760, 126.9100], [36.3060, 126.9500]],
+      '서천군': [[36.0817, 126.6919], [36.1117, 126.7319]],
+      '청양군': [[36.4594, 126.8025], [36.4894, 126.8425]],
+      '홍성군': [[36.6015, 126.6606], [36.6315, 126.7006]],
+      '예산군': [[36.6826, 126.8472], [36.7126, 126.8872]],
+      '태안군': [[36.7456, 126.2981], [36.7756, 126.3381]]
+    };
+
+    // 지도에 지역 표시
+    function drawRegions() {
+      // 기존 레이어 제거
+      Object.values(regionLayers).forEach(layer => {
+        map.removeLayer(layer);
+      });
+      
+      Object.keys(issueData).forEach(regionName => {
+        const bounds = chungnamBounds[regionName];
+        if (bounds) {
+          const data = issueData[regionName];
+          const color = getColorByImportance(data.중요도);
+          
+          // 사각형으로 지역 표시
+          const rectangle = L.rectangle(bounds, {
+            color: '#333',
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.6
+          });
+          
+          rectangle.addTo(map);
+          
+          // 팝업 추가
+          const popupContent = createPopupContent(regionName, data);
+          rectangle.bindPopup(popupContent, {
+            maxWidth: 400,
+            className: 'custom-popup'
+          });
+          
+          // 지역명 라벨 추가
+          const center = rectangle.getBounds().getCenter();
+          const label = L.marker(center, {
+            icon: L.divIcon({
+              className: 'region-label',
+              html: `<div style="background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; text-align: center; border: 1px solid #333; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">${regionName}</div>`,
+              iconSize: [60, 20],
+              iconAnchor: [30, 10]
+            })
+          });
+          
+          label.addTo(map);
+          
+          regionLayers[regionName] = rectangle;
+          if (!allRegions.includes(regionName)) {
+            allRegions.push(regionName);
+          }
+        }
+      });
+      
+      renderRegionButtons(allRegions);
+    }
+
+    // 전역 함수로 등록 (popup에서 사용하기 위해)
+    window.handleIssueClick = handleIssueClick;
+
+    // 초기화
+    loadCSVData();
+
+    // 지도 클릭 이벤트
+    map.on('click', function(e) {
+      console.log('지도 클릭 좌표:', e.latlng);
+    });
+  </script>
+</body>
+</html>
