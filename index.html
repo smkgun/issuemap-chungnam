@@ -193,7 +193,7 @@
     // CSV 파일 읽기 및 데이터 처리
     async function loadCSVData() {
       try {
-        const csvContent = await window.fs.readFile('chungnam_issues_with_naver_links.csv', { encoding: 'utf8' });
+        const csvContent = await window.fs.readFile('chungnam_issues_with_gyeryong_corrected.csv', { encoding: 'utf8' });
         
         Papa.parse(csvContent, {
           header: true,
@@ -393,6 +393,21 @@
           이슈2_링크: 'https://search.naver.com/search.naver?where=news&query=태안군 가로림만 갯벌 세계유산 등재',
           이슈3: '해안선·모래톱 보전 및 관광개발',
           이슈3_링크: 'https://search.naver.com/search.naver?where=news&query=태안군 해안선·모래톱 보전 및 관광개발'
+        },
+        '계룡시': {
+          중요도: '높음',
+          주요이슈: [
+            '군인·가족 정주환경(주거/교육/의료) 인프라 부족',
+            '민간 상권 침체 및 군문화관광 활성화 실패',
+            '대전-계룡 간 광역교통 인프라 부족 (KTX 없음, BRT 미비)'
+          ],
+          출처: null,
+          이슈1: '군인·가족 정주환경(주거/교육/의료) 인프라 부족',
+          이슈1_링크: 'https://n.news.naver.com/article/003/0012349500',
+          이슈2: '민간 상권 침체 및 군문화관광 활성화 실패',
+          이슈2_링크: 'https://n.news.naver.com/article/421/0006780326',
+          이슈3: '대전-계룡 간 광역교통 인프라 부족 (KTX 없음, BRT 미비)',
+          이슈3_링크: 'https://n.news.naver.com/article/001/0014601689'
         }
       };
       
@@ -490,7 +505,7 @@
       '청양군': [[36.4594, 126.8025], [36.4894, 126.8425]],
       '홍성군': [[36.6015, 126.6606], [36.6315, 126.7006]],
       '예산군': [[36.6826, 126.8472], [36.7126, 126.8872]],
-      '태안군': [[36.7456, 126.2981], [36.7756, 126.3381]]
+      '태안군': [[36.7456, 126.2981], [36.7756, 126.3381]],
     };
 
     // 지도에 지역 표시
